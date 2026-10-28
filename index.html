@@ -1,0 +1,1474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>PAMMU NES - 9:16 Retro Live Overlay</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Authentic 8-Bit Retro Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --nes-primary: #ff2a2a;
+      --nes-secondary: #ffd700;
+      --nes-accent: #00f0ff;
+      --nes-bg-dark: #090714;
+      --nes-panel: #120e24;
+      --nes-border: #ffffff;
+      --cutout-height-ratio: 56.25%; /* Default 16:9 Landscape (9 / 16 = 56.25%) */
+      --cutout-width: 96%;
+    }
+
+    /* Theme Variations */
+    [data-theme="cyber"] {
+      --nes-primary: #ff007f;
+      --nes-secondary: #00f0ff;
+      --nes-accent: #ffe600;
+      --nes-bg-dark: #070510;
+      --nes-panel: #140b29;
+    }
+    [data-theme="famicom"] {
+      --nes-primary: #b81d24;
+      --nes-secondary: #e5b842;
+      --nes-accent: #7cfc00;
+      --nes-bg-dark: #0f0808;
+      --nes-panel: #1f1111;
+    }
+    [data-theme="arcade-green"] {
+      --nes-primary: #00ff66;
+      --nes-secondary: #ffe600;
+      --nes-accent: #00e5ff;
+      --nes-bg-dark: #040d08;
+      --nes-panel: #0a1f13;
+    }
+
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+      image-rendering: pixelated;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: rgba(0, 0, 0, 0) !important;
+      font-family: 'VT323', monospace;
+    }
+
+    .font-pixel {
+      font-family: 'Press Start 2P', monospace;
+    }
+
+    .font-vt {
+      font-family: 'VT323', monospace;
+    }
+
+    /* Responsive 9:16 Stage Wrapper */
+    .stage-wrapper {
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0, 0, 0, 0);
+    }
+
+    .overlay-canvas {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      max-width: calc(100vh * (9 / 16));
+      max-height: calc(100vw * (16 / 9));
+      aspect-ratio: 9 / 16;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      overflow: hidden;
+      background: rgba(0, 0, 0, 0);
+    }
+
+    /* Dynamic Clip-Path Cabinet Backdrop Layer (Punches 100% True Transparent Hole for Cutout) */
+    .cabinet-backdrop-layer {
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(circle at 50% 18%, rgba(255, 42, 42, 0.14), transparent 55%),
+        linear-gradient(180deg, rgba(9, 7, 20, 0.92) 0%, rgba(12, 9, 28, 0.88) 65%, rgba(6, 5, 14, 0.82) 100%);
+      pointer-events: none;
+      z-index: 5;
+      transition: clip-path 0.08s linear;
+    }
+
+    /* 8-Bit Pixel Box Borders */
+    .pixel-box {
+      background: var(--nes-panel);
+      border: 3px solid var(--nes-border);
+      box-shadow:
+        0 4px 0 #000000,
+        inset 0 0 0 3px #000000;
+    }
+
+    .pixel-box-gold {
+      background: rgba(18, 14, 36, 0.95);
+      border: 3px solid var(--nes-secondary);
+      box-shadow:
+        0 4px 0 #000000,
+        0 0 12px rgba(255, 215, 0, 0.35),
+        inset 0 0 0 2px #000000;
+    }
+
+    .pixel-box-red {
+      background: rgba(24, 8, 18, 0.95);
+      border: 3px solid var(--nes-primary);
+      box-shadow:
+        0 4px 0 #000000,
+        0 0 12px rgba(255, 42, 42, 0.4),
+        inset 0 0 0 2px #000000;
+    }
+
+    /* Adjustable Landscape Transparent Game Bezel */
+    .game-viewport-container {
+      position: relative;
+      width: var(--cutout-width);
+      margin: 0 auto;
+      background: rgba(0, 0, 0, 0) !important;
+      border: 3px solid var(--nes-secondary);
+      box-shadow:
+        0 0 0 3px #000000,
+        0 0 20px rgba(0, 240, 255, 0.28),
+        inset 0 0 0 2px rgba(0, 0, 0, 0.85);
+      z-index: 20;
+      transition: width 0.15s ease;
+    }
+
+    /* Full-width edge-to-edge landscape option */
+    .game-viewport-container.full-bleed {
+      border-left-width: 0px;
+      border-right-width: 0px;
+    }
+
+    /* Responsive Height Box Driven by --cutout-height-ratio */
+    .game-viewport-sizer {
+      width: 100%;
+      padding-top: var(--cutout-height-ratio);
+      position: relative;
+      background: rgba(0, 0, 0, 0) !important;
+    }
+
+    /* Corner Pixel Brackets on Landscape Frame */
+    .corner-bracket {
+      position: absolute;
+      width: 12px;
+      height: 12px;
+      border-color: var(--nes-accent);
+      z-index: 25;
+      pointer-events: none;
+    }
+    .corner-tl { top: -3px; left: -3px; border-top: 4px solid var(--nes-accent); border-left: 4px solid var(--nes-accent); }
+    .corner-tr { top: -3px; right: -3px; border-top: 4px solid var(--nes-accent); border-right: 4px solid var(--nes-accent); }
+    .corner-bl { bottom: -3px; left: -3px; border-bottom: 4px solid var(--nes-accent); border-left: 4px solid var(--nes-accent); }
+    .corner-br { bottom: -3px; right: -3px; border-bottom: 4px solid var(--nes-accent); border-right: 4px solid var(--nes-accent); }
+
+    /* Animated Marquee Chase Lights */
+    @keyframes chaseLights {
+      0%, 100% { opacity: 1; background-color: var(--nes-secondary); }
+      50% { opacity: 0.35; background-color: var(--nes-accent); }
+    }
+    .led-bulb {
+      width: 5px;
+      height: 5px;
+      display: inline-block;
+      animation: chaseLights 0.9s steps(2, end) infinite;
+    }
+    .led-bulb:nth-child(even) {
+      animation-delay: 0.45s;
+    }
+
+    /* Subtle CRT Scanline effect for non-gameplay HUD bars */
+    .crt-hud {
+      background-image: linear-gradient(
+        rgba(18, 16, 16, 0) 50%, 
+        rgba(0, 0, 0, 0.38) 50%
+      );
+      background-size: 100% 4px;
+    }
+
+    /* Retro Synth Grid for Bottom YT Native Safe Zone */
+    .retro-grid-dock {
+      background-color: rgba(8, 6, 18, 0.82);
+      background-image: 
+        linear-gradient(transparent 0%, rgba(255, 42, 42, 0.08) 2%, transparent 3%),
+        linear-gradient(90deg, transparent 0%, rgba(0, 240, 255, 0.07) 2%, transparent 3%);
+      background-size: 24px 24px;
+      border-top: 3px solid rgba(255, 215, 0, 0.55);
+      box-shadow: 0 -6px 20px rgba(0, 0, 0, 0.7);
+    }
+
+    /* Blinking & Pulse Animations */
+    @keyframes blink8bit {
+      0%, 49% { opacity: 1; }
+      50%, 100% { opacity: 0.15; }
+    }
+    .animate-blink {
+      animation: blink8bit 1s infinite;
+    }
+
+    @keyframes floatPixel {
+      0%, 100% { transform: translateY(0px); }
+      50% { transform: translateY(-3px); }
+    }
+    .animate-float {
+      animation: floatPixel 2s steps(2, end) infinite;
+    }
+
+    @keyframes flashAlert {
+      0%, 100% { transform: scale(1); filter: brightness(1); }
+      50% { transform: scale(1.03); filter: brightness(1.35); }
+    }
+    .animate-flash {
+      animation: flashAlert 0.4s steps(2, end) 3;
+    }
+
+    /* Text Shadows for Maximum Mobile Readability */
+    .text-outline {
+      text-shadow: 2px 2px 0px #000000, -1px -1px 0px #000000, 1px -1px 0px #000000, -1px 1px 0px #000000;
+    }
+
+    /* Segmented Progress Bar */
+    .progress-segments {
+      background: repeating-linear-gradient(
+        90deg,
+        transparent,
+        transparent 10px,
+        rgba(0, 0, 0, 0.65) 10px,
+        rgba(0, 0, 0, 0.65) 13px
+      );
+    }
+
+    /* Retro Range Slider for Screen Height Adjuster */
+    input[type="range"].nes-slider {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 10px;
+      background: #000000;
+      border: 2px solid #ffffff;
+      outline: none;
+    }
+    input[type="range"].nes-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 16px;
+      height: 18px;
+      background: var(--nes-secondary);
+      border: 2px solid #000000;
+      cursor: pointer;
+    }
+
+    /* Custom Scrollbar for Edit Drawer */
+    ::-webkit-scrollbar {
+      width: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #090714;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #ffd700;
+    }
+  </style>
+</head>
+<body data-theme="nes-classic">
+
+  <div class="stage-wrapper">
+    <!-- MAIN 9:16 OVERLAY CANVAS -->
+    <main id="overlayCanvas" class="overlay-canvas">
+
+      <!-- PUNCHED-OUT ARCADE CABINET BACKDROP (100% Transparent inside #gameViewport via JS clip-path) -->
+      <div id="backdropCutoutLayer" class="cabinet-backdrop-layer"></div>
+
+      <!-- =====================================================
+           1. TOP HEADER ZONE + RETENTION HOOK BAR
+           ===================================================== -->
+      <header class="w-full pt-2.5 px-3 z-30 flex flex-col gap-1.5">
+        <!-- Top Cartridge Marquee Bar with Animated LED Chase Strip -->
+        <div 
+          id="headerBrandBar"
+          onclick="toggleControlDrawer()"
+          title="Tap to customize PAMMU NES Overlay & Landscape Screen Size"
+          class="pixel-box crt-hud px-3 py-1.5 flex flex-col gap-1 cursor-pointer active:scale-[0.99] transition-transform"
+        >
+          <!-- Animated 8-Bit Arcade Marquee Bulbs -->
+          <div class="w-full flex items-center justify-between px-0.5">
+            <span class="led-bulb"></span><span class="led-bulb"></span><span class="led-bulb"></span><span class="led-bulb"></span>
+            <span class="font-pixel text-[6px] text-white/60 tracking-widest uppercase">TAP HEADER TO EDIT OVERLAY & SCREEN SIZE</span>
+            <span class="led-bulb"></span><span class="led-bulb"></span><span class="led-bulb"></span><span class="led-bulb"></span>
+          </div>
+
+          <div class="flex items-center justify-between">
+            <!-- Left: Animated 8-Bit NES Controller SVG + Brand Title -->
+            <div class="flex items-center gap-2.5 min-w-0">
+              <div class="animate-float shrink-0">
+                <!-- Custom 8-Bit NES Controller SVG (Zero Emoji) -->
+                <svg width="34" height="24" viewBox="0 0 17 12" fill="none" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges">
+                  <rect x="0" y="0" width="17" height="12" fill="#000000"/>
+                  <rect x="1" y="1" width="15" height="10" fill="#D4D4D8"/>
+                  <rect x="2" y="2" width="13" height="8" fill="#27272A"/>
+                  <!-- D-Pad -->
+                  <rect x="4" y="4" width="1" height="4" fill="#FFFFFF"/>
+                  <rect x="3" y="5" width="3" height="2" fill="#FFFFFF"/>
+                  <!-- Center ridges -->
+                  <rect x="7" y="3" width="3" height="1" fill="#71717A"/>
+                  <rect x="7" y="5" width="3" height="1" fill="#71717A"/>
+                  <rect x="7" y="7" width="3" height="2" fill="#EF4444"/>
+                  <!-- A & B Red Buttons -->
+                  <rect x="11" y="6" width="2" height="2" fill="#FF2A2A"/>
+                  <rect x="13" y="5" width="2" height="2" fill="#FF2A2A"/>
+                </svg>
+              </div>
+              <div class="truncate">
+                <div class="flex items-center gap-1.5">
+                  <h1 id="displayBrand" class="font-pixel text-sm sm:text-base tracking-wider text-white text-outline truncate" style="color: var(--nes-secondary);">
+                    PAMMU NES
+                  </h1>
+                </div>
+                <p id="displayTagline" class="font-vt text-xs sm:text-sm tracking-widest text-cyan-300 uppercase leading-none text-outline">
+                  90s NOSTALGIA ARCADE • LANDSCAPE LIVE
+                </p>
+              </div>
+            </div>
+
+            <!-- Right: Live 60FPS Retro Status Badge -->
+            <div class="flex flex-col items-end shrink-0">
+              <div class="flex items-center gap-1.5 bg-black/80 px-2 py-0.5 border border-red-500">
+                <span class="w-2 h-2 bg-red-500 inline-block animate-blink"></span>
+                <span class="font-pixel text-[8px] text-red-400 tracking-tighter">LIVE 8-BIT</span>
+              </div>
+              <span id="displayStageTag" class="font-vt text-xs text-yellow-300 tracking-wider mt-0.5 text-outline">
+                1P • NO SAVE STATES
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- =====================================================
+             2. VIEWER RETENTION HOOK BAR (STOPS SCROLLERS IN 2 SEC)
+             ===================================================== -->
+        <div class="grid grid-cols-12 gap-1.5 items-stretch">
+          <!-- Left 8 Cols: Active Challenge & Game Cartridge Badge -->
+          <div class="col-span-8 pixel-box-red crt-hud px-2.5 py-1.5 flex flex-col justify-between">
+            <!-- Game Cartridge Ribbon -->
+            <div class="flex items-center justify-between gap-1 border-b border-white/15 pb-1">
+              <div class="flex items-center gap-1.5 min-w-0">
+                <!-- 8-Bit Cartridge Icon -->
+                <svg width="13" height="13" viewBox="0 0 8 8" shape-rendering="crispEdges" class="shrink-0">
+                  <rect x="1" y="0" width="6" height="8" fill="#FFD700"/>
+                  <rect x="2" y="1" width="4" height="3" fill="#FF2A2A"/>
+                  <rect x="2" y="6" width="1" height="2" fill="#000"/>
+                  <rect x="5" y="6" width="1" height="2" fill="#000"/>
+                </svg>
+                <span class="font-pixel text-[7px] text-yellow-300 uppercase shrink-0">ACTIVE CHALLENGE:</span>
+                <span id="displayGame" class="font-pixel text-[8px] sm:text-[9px] text-cyan-300 truncate text-outline">
+                  CONTRA (1988)
+                </span>
+              </div>
+            </div>
+
+            <!-- High-Retention Challenge Text -->
+            <div class="pt-1 flex items-center gap-1.5">
+              <!-- Pixel Lightning SVG -->
+              <svg width="11" height="13" viewBox="0 0 6 8" shape-rendering="crispEdges" class="shrink-0 animate-blink">
+                <rect x="3" y="0" width="2" height="2" fill="#00F0FF"/>
+                <rect x="1" y="2" width="4" height="2" fill="#00F0FF"/>
+                <rect x="2" y="4" width="3" height="2" fill="#FFD700"/>
+                <rect x="1" y="6" width="2" height="2" fill="#FFD700"/>
+              </svg>
+              <p id="displayChallenge" class="font-vt text-base sm:text-lg leading-none font-bold text-white tracking-wide uppercase truncate text-outline">
+                1 LIFE NO-DEATH CHALLENGE!
+              </p>
+            </div>
+          </div>
+
+          <!-- Right 4 Cols: Interactive Lives & Death Counter (Tap to +1 Death on Stream!) -->
+          <div 
+            onclick="triggerDeathIncrement()"
+            title="Tap to record a Fail / Lose Heart on stream!"
+            class="col-span-4 pixel-box-gold crt-hud px-2 py-1.5 flex flex-col justify-between items-center cursor-pointer active:scale-95 transition-transform"
+          >
+            <!-- Pixel Hearts Row -->
+            <div class="w-full flex items-center justify-between">
+              <span class="font-pixel text-[7px] text-cyan-300">LIFE</span>
+              <div id="heartsContainer" class="flex items-center gap-0.5">
+                <!-- Populated by JS with crisp 8-bit SVG hearts -->
+              </div>
+            </div>
+
+            <!-- Death Counter Row -->
+            <div class="w-full flex items-center justify-between border-t border-white/15 pt-1 mt-0.5">
+              <div class="flex items-center gap-1">
+                <!-- 8-Bit Skull SVG -->
+                <svg width="12" height="12" viewBox="0 0 8 8" shape-rendering="crispEdges">
+                  <rect x="2" y="0" width="4" height="1" fill="#FFFFFF"/>
+                  <rect x="1" y="1" width="6" height="4" fill="#FFFFFF"/>
+                  <rect x="2" y="2" width="1" height="2" fill="#000000"/>
+                  <rect x="5" y="2" width="1" height="2" fill="#000000"/>
+                  <rect x="2" y="5" width="4" height="2" fill="#D4D4D8"/>
+                  <rect x="3" y="6" width="1" height="1" fill="#000000"/>
+                  <rect x="5" y="6" width="1" height="1" fill="#000000"/>
+                </svg>
+                <span class="font-pixel text-[7px] text-red-400">FAILS</span>
+              </div>
+              <span id="displayDeaths" class="font-pixel text-xs text-yellow-300 text-outline">00</span>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <!-- =====================================================
+           3. LANDSCAPE TRANSPARENT GAMEPLAY CUTOUT + RETENTION DECK
+           (Compact Landscape Height by Default + Live Resize Controls!)
+           ===================================================== -->
+      <section class="w-full my-auto py-1 z-20 flex flex-col items-center justify-center">
+        <!-- Landscape Gameplay Cutout Container -->
+        <div id="gameViewport" class="game-viewport-container overflow-hidden">
+          <div id="gameViewportSizer" class="game-viewport-sizer">
+            <!-- Pixel Corner Brackets -->
+            <div class="corner-bracket corner-tl"></div>
+            <div class="corner-bracket corner-tr"></div>
+            <div class="corner-bracket corner-bl"></div>
+            <div class="corner-bracket corner-br"></div>
+
+            <!-- Top-Left Micro Bezel Tag -->
+            <div class="absolute top-1.5 left-2 z-30 flex items-center gap-1 bg-black/80 px-1.5 py-0.5 border border-white/25 pointer-events-none">
+              <span class="w-1.5 h-1.5 bg-green-400 inline-block"></span>
+              <span id="cutoutPresetBadge" class="font-pixel text-[6px] text-white/90 tracking-wider">16:9 LANDSCAPE</span>
+            </div>
+
+            <!-- Top-Right Micro High-Score / Stage Badge -->
+            <div class="absolute top-1.5 right-2 z-30 bg-black/80 px-1.5 py-0.5 border border-yellow-400/40 pointer-events-none">
+              <span id="bezelStageText" class="font-pixel text-[6px] text-yellow-300 tracking-wider">STAGE 01</span>
+            </div>
+
+            <!-- Bottom-Right Live Dimensions Badge (Only shown in SETUP GUIDE mode) -->
+            <div id="cutoutDimensionsBadge" class="hidden absolute bottom-1.5 right-2 z-30 bg-cyan-950/90 px-1.5 py-0.5 border border-cyan-400 pointer-events-none">
+              <span id="cutoutDimensionsText" class="font-pixel text-[6px] text-cyan-200">16:9 • 360x202px</span>
+            </div>
+
+            <!-- Dynamic Pop-up 8-Bit Arcade Event Toast -->
+            <div 
+              id="arcadeToast" 
+              class="hidden absolute top-7 inset-x-3 z-40 pixel-box-gold px-2.5 py-1.5 flex items-center justify-center gap-2 text-center pointer-events-none"
+            >
+              <!-- Pixel Trophy/Alert SVG -->
+              <svg width="16" height="16" viewBox="0 0 8 8" shape-rendering="crispEdges" class="shrink-0">
+                <rect x="2" y="0" width="4" height="1" fill="#FFD700"/>
+                <rect x="1" y="1" width="6" height="3" fill="#FFD700"/>
+                <rect x="2" y="4" width="4" height="1" fill="#EAB308"/>
+                <rect x="3" y="5" width="2" height="2" fill="#CA8A04"/>
+                <rect x="2" y="7" width="4" height="1" fill="#FFD700"/>
+              </svg>
+              <span id="arcadeToastText" class="font-pixel text-[9px] text-white text-outline tracking-wide">
+                PLAYER 1 READY!
+              </span>
+            </div>
+
+            <!-- SIMULATED LANDSCAPE GAME PREVIEW (ONLY VISIBLE IN SETUP GUIDE MODE) -->
+            <div id="previewGameMock" class="hidden absolute inset-0 flex-col items-center justify-between p-2.5 bg-gradient-to-b from-[#0b0726]/90 via-[#130d38]/90 to-[#1a091e]/90 text-center">
+              <div class="w-full flex justify-between text-[7px] font-pixel text-cyan-300/80 px-1">
+                <span>1UP 024800</span>
+                <span>LANDSCAPE CAPTURE PREVIEW</span>
+                <span>HI 099900</span>
+              </div>
+
+              <div class="my-auto flex flex-col items-center gap-1">
+                <!-- 8-Bit Pixel Ghost SVG -->
+                <div class="flex items-center gap-2 animate-float">
+                  <svg width="26" height="26" viewBox="0 0 14 14" shape-rendering="crispEdges">
+                    <rect x="4" y="1" width="6" height="1" fill="#FF2A2A"/>
+                    <rect x="2" y="2" width="10" height="2" fill="#FF2A2A"/>
+                    <rect x="1" y="4" width="12" height="7" fill="#FF2A2A"/>
+                    <rect x="3" y="4" width="3" height="4" fill="#FFFFFF"/>
+                    <rect x="8" y="4" width="3" height="4" fill="#FFFFFF"/>
+                    <rect x="4" y="5" width="2" height="2" fill="#0044FF"/>
+                    <rect x="9" y="5" width="2" height="2" fill="#0044FF"/>
+                    <rect x="1" y="11" width="2" height="2" fill="#FF2A2A"/>
+                    <rect x="4" y="11" width="2" height="2" fill="#FF2A2A"/>
+                    <rect x="8" y="11" width="2" height="2" fill="#FF2A2A"/>
+                    <rect x="11" y="11" width="2" height="2" fill="#FF2A2A"/>
+                  </svg>
+                  <div class="text-left">
+                    <p class="font-pixel text-[8px] text-yellow-300">
+                      [ SETUP GUIDE MODE ]
+                    </p>
+                    <p class="font-vt text-sm text-white/95 leading-none">
+                      Tap <span class="text-cyan-300 font-bold">📐 SCREEN SIZE</span> to fit your Landscape game!
+                    </p>
+                  </div>
+                </div>
+                <p class="font-vt text-xs text-green-300 leading-tight">
+                  In <b>STREAM READY</b> mode, this window is a 100% transparent cutout hole!
+                </p>
+              </div>
+
+              <!-- Simulated 8-bit ground -->
+              <div class="w-full h-2 border-t-2 border-orange-400 bg-orange-900/60"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- =====================================================
+             4. MID-LOWER RETENTION HUD (SITS DIRECTLY BELOW LANDSCAPE CUTOUT,
+                SAFELY ABOVE YOUTUBE'S BOTTOM 30% NATIVE CHAT)
+             ===================================================== -->
+        <div class="w-[96%] mt-2 flex flex-col gap-1.5 z-30">
+          <!-- Sub / Like Goal RPG Progress Bar (Tap to +1 Progress) -->
+          <div 
+            onclick="incrementGoal()"
+            title="Tap to +1 Goal Progress!"
+            class="pixel-box crt-hud px-2.5 py-1.5 flex flex-col gap-1 cursor-pointer active:scale-[0.99] transition-transform"
+          >
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-1.5">
+                <!-- 8-Bit Gold Coin SVG -->
+                <svg width="12" height="12" viewBox="0 0 8 8" shape-rendering="crispEdges">
+                  <rect x="2" y="0" width="4" height="1" fill="#FFD700"/>
+                  <rect x="1" y="1" width="6" height="6" fill="#FFD700"/>
+                  <rect x="2" y="7" width="4" height="1" fill="#FFD700"/>
+                  <rect x="3" y="2" width="2" height="4" fill="#FFFBEB"/>
+                </svg>
+                <span id="displayGoalLabel" class="font-pixel text-[8px] text-yellow-300 tracking-wide text-outline">
+                  TODAY'S SUB GOAL
+                </span>
+              </div>
+              <div class="flex items-center gap-1.5">
+                <span id="displayGoalCount" class="font-pixel text-[8px] text-white text-outline">
+                  42 / 50
+                </span>
+                <span class="font-pixel text-[7px] px-1 py-0.5 bg-green-600 text-white border border-white/60">
+                  +1 SUB
+                </span>
+              </div>
+            </div>
+
+            <!-- RPG HP/XP Bar Track -->
+            <div class="w-full h-3 bg-black border-2 border-white/80 relative overflow-hidden">
+              <div 
+                id="goalProgressBar" 
+                class="h-full bg-gradient-to-r from-red-500 via-yellow-400 to-green-400 transition-all duration-300"
+                style="width: 84%;"
+              ></div>
+              <div class="inset-0 absolute progress-segments pointer-events-none"></div>
+            </div>
+          </div>
+
+          <!-- Rotating 8-Bit Engagement CTA Ticker (Stops Viewers Leaving) -->
+          <div class="pixel-box-gold px-2.5 py-1 flex items-center justify-between gap-2">
+            <div class="flex items-center gap-1.5 min-w-0">
+              <!-- Pixel Star SVG -->
+              <svg width="12" height="12" viewBox="0 0 8 8" shape-rendering="crispEdges" class="shrink-0 animate-spin" style="animation-duration: 6s;">
+                <rect x="3" y="0" width="2" height="8" fill="#00F0FF"/>
+                <rect x="0" y="3" width="8" height="2" fill="#00F0FF"/>
+                <rect x="2" y="2" width="4" height="4" fill="#FFD700"/>
+              </svg>
+              <p id="rotatingPromptText" class="font-vt text-base sm:text-lg text-white tracking-wide truncate text-outline">
+                DROP YOUR NEXT GAME REQUEST IN CHAT!
+              </p>
+            </div>
+            <span class="font-pixel text-[6px] text-cyan-300 shrink-0 bg-black/80 px-1.5 py-0.5 border border-cyan-400/50">
+              INSERT COIN
+            </span>
+          </div>
+        </div>
+      </section>
+
+      <!-- =====================================================
+           5. BOTTOM 30% YOUTUBE SHORTS SAFE-ZONE DOCK
+           ===================================================== -->
+      <footer class="w-full h-[27%] relative z-20 flex flex-col justify-end">
+
+        <!-- MODE A (DEFAULT & RECOMMENDED): YT NATIVE SAFE BACKDROP DOCK -->
+        <div id="bottomModeNative" class="w-full h-full retro-grid-dock px-3 py-2 flex flex-col justify-between">
+          <!-- Top Lip of Bottom Dock (Left-shifted to stay clear of YT Right Buttons) -->
+          <div class="w-[78%] flex items-center justify-between border-b border-white/15 pb-1">
+            <div class="flex items-center gap-1.5">
+              <span class="w-2 h-2 bg-cyan-400 inline-block"></span>
+              <span class="font-pixel text-[7px] text-cyan-300 tracking-wider text-outline">
+                LIVE CHAT ZONE • DROP A HI!
+              </span>
+            </div>
+            <span class="font-vt text-xs text-yellow-300/90 uppercase tracking-widest">
+              [SUB FOR 90s VIBES]
+            </span>
+          </div>
+
+          <!-- Subtle Watermark at Bottom Left (Never collides with YT UI) -->
+          <div class="w-[76%] my-auto opacity-30 pointer-events-none flex items-center gap-2">
+            <span class="font-pixel text-[8px] text-white">►</span>
+            <span class="font-vt text-sm text-white tracking-widest uppercase">
+              YOUTUBE NATIVE LIVE CHAT CONTRAST SHIELD
+            </span>
+          </div>
+
+          <div class="w-[76%] flex items-center justify-between text-[10px] font-vt text-white/60 pb-0.5">
+            <span>INSERT COIN • PAMMU NES ARCHIVE</span>
+            <span>LANDSCAPE 9:16 PRO</span>
+          </div>
+        </div>
+
+        <!-- MODE B (OPTIONAL): COMPACT LEFT-SHIFTED CUSTOM CHAT BOX -->
+        <div id="bottomModeCustom" class="hidden w-full h-full px-3 pb-3 pt-1 flex items-stretch">
+          <div class="w-[76%] h-full pixel-box bg-black/65 flex flex-col justify-between p-2">
+            <div class="flex items-center justify-between border-b border-yellow-400/40 pb-1">
+              <span class="font-pixel text-[8px] text-yellow-300">◈ STREAM CHAT BOX</span>
+              <span class="font-vt text-xs text-cyan-300">SAFE WIDTH: 76%</span>
+            </div>
+            <div class="my-auto text-center opacity-25 pointer-events-none">
+              <p class="font-pixel text-[8px] text-white">PLACE PRISM CHAT WIDGET HERE</p>
+            </div>
+            <div class="flex items-center justify-between text-[11px] font-vt text-green-400 border-t border-white/10 pt-0.5">
+              <span>★ NEW SUBS GET SHOUTOUT</span>
+              <span>PAMMU NES</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- YOUTUBE SHORTS SAFE-ZONE VISUALIZER OVERLAY (Shown in SETUP GUIDE Mode) -->
+        <div id="ytSafeZoneGuide" class="hidden pointer-events-none fixed inset-0 z-40">
+          <!-- Simulated YT Right Side Action Buttons -->
+          <div class="absolute right-2 bottom-[12%] flex flex-col items-center gap-3 bg-red-500/20 border-2 border-dashed border-red-400 p-1.5 rounded">
+            <span class="font-pixel text-[6px] text-red-200 bg-black/80 px-1 py-0.5 text-center">YT BUTTONS<br>DEAD ZONE</span>
+            <div class="w-8 h-8 rounded-full bg-white/20 border border-white/50 flex items-center justify-center font-vt text-xs text-white">LIKE</div>
+            <div class="w-8 h-8 rounded-full bg-white/20 border border-white/50 flex items-center justify-center font-vt text-xs text-white">CHAT</div>
+            <div class="w-8 h-8 rounded-full bg-white/20 border border-white/50 flex items-center justify-center font-vt text-xs text-white">SHARE</div>
+          </div>
+
+          <!-- Simulated YT Bottom Native Chat & Channel Subscribe Bar -->
+          <div class="absolute bottom-2 left-2 right-16 h-[23%] border-2 border-dashed border-cyan-400 bg-cyan-500/10 p-2 flex flex-col justify-between rounded">
+            <div class="flex items-center justify-between">
+              <span class="font-pixel text-[7px] bg-cyan-950 text-cyan-300 px-1.5 py-0.5 border border-cyan-400">
+                YOUTUBE NATIVE CHAT & SUBSCRIBE AREA (SAFE!)
+              </span>
+            </div>
+            <div class="space-y-1 text-left font-vt text-xs text-white/85">
+              <p class="bg-black/50 px-1.5 py-0.5 rounded"><b>RetroFan99:</b> Bhai Contra landscape screen ekdum mast fit hai!</p>
+              <p class="bg-black/50 px-1.5 py-0.5 rounded"><b>Aman_Gaming:</b> Childhood memories unlocked!</p>
+            </div>
+            <div class="flex items-center gap-2 bg-black/70 px-2 py-1 rounded">
+              <span class="font-pixel text-[8px] text-white">@PammuNES</span>
+              <span class="bg-white text-black font-pixel text-[7px] px-2 py-0.5 rounded-full">Subscribe</span>
+            </div>
+          </div>
+        </div>
+
+      </footer>
+
+      <!-- =====================================================
+           FLOATING QUICK CONTROLS BAR (WITH 📐 SCREEN SIZE BUTTON)
+           ===================================================== -->
+      <div id="quickFloatingBar" class="absolute top-14 right-3 z-50 flex items-center gap-1 transition-opacity duration-500">
+        <button 
+          onclick="toggleScreenSizePopover()" 
+          id="screenSizeQuickBtn"
+          class="pixel-box px-2 py-1 font-pixel text-[7px] text-green-300 bg-black/95 hover:bg-zinc-900 active:scale-95"
+        >
+          📐 SCREEN SIZE
+        </button>
+        <button 
+          onclick="togglePreviewMode()" 
+          id="modeToggleBtn"
+          class="pixel-box px-2 py-1 font-pixel text-[7px] text-yellow-300 bg-black/95 hover:bg-zinc-900 active:scale-95"
+        >
+          MODE: STREAM READY
+        </button>
+        <button 
+          onclick="toggleControlDrawer()" 
+          class="pixel-box px-2 py-1 font-pixel text-[7px] text-cyan-300 bg-black/95 hover:bg-zinc-900 active:scale-95"
+        >
+          ⚙ EDIT
+        </button>
+      </div>
+
+      <!-- =====================================================
+           LIVE FLOATING SCREEN SIZE & LANDSCAPE RATIO POPOVER
+           (Lets user see & resize the landscape cutout in real-time!)
+           ===================================================== -->
+      <div 
+        id="screenSizePopover" 
+        class="hidden absolute top-24 inset-x-3 z-50 pixel-box-gold bg-black/95 p-3 flex flex-col gap-2.5 shadow-2xl"
+      >
+        <div class="flex items-center justify-between border-b border-white/20 pb-1.5">
+          <div class="flex items-center gap-1.5">
+            <span class="font-pixel text-[8px] text-yellow-300">📐 LANDSCAPE SCREEN SIZE ADJUSTER</span>
+          </div>
+          <button 
+            onclick="toggleScreenSizePopover()" 
+            class="px-2 py-0.5 bg-red-600 text-white font-pixel text-[7px] border border-white"
+          >
+            DONE
+          </button>
+        </div>
+
+        <!-- 1-Tap Aspect Ratio Presets -->
+        <div class="grid grid-cols-2 gap-1.5">
+          <button 
+            id="presetBtn169"
+            onclick="setScreenRatioPreset('16:9 LANDSCAPE', 56.25)" 
+            class="py-1.5 px-2 font-pixel text-[7px] border border-white/40 bg-zinc-900 text-white text-left flex items-center justify-between"
+          >
+            <span>16:9 LANDSCAPE</span>
+            <span class="text-yellow-300">DEFAULT</span>
+          </button>
+          <button 
+            id="presetBtn209"
+            onclick="setScreenRatioPreset('20:9 FULL PHONE', 45)" 
+            class="py-1.5 px-2 font-pixel text-[7px] border border-white/40 bg-zinc-900 text-white text-left flex items-center justify-between"
+          >
+            <span>20:9 FULL PHONE</span>
+            <span class="text-cyan-300">WIDE</span>
+          </button>
+          <button 
+            id="presetBtn189"
+            onclick="setScreenRatioPreset('18:9 COMPACT', 50)" 
+            class="py-1.5 px-2 font-pixel text-[7px] border border-white/40 bg-zinc-900 text-white text-left flex items-center justify-between"
+          >
+            <span>18:9 COMPACT</span>
+            <span class="text-green-300">SLIM</span>
+          </button>
+          <button 
+            id="presetBtn43"
+            onclick="setScreenRatioPreset('4:3 CLASSIC NES', 75)" 
+            class="py-1.5 px-2 font-pixel text-[7px] border border-white/40 bg-zinc-900 text-white text-left flex items-center justify-between"
+          >
+            <span>4:3 CLASSIC TV</span>
+            <span class="text-orange-300">TALL</span>
+          </button>
+        </div>
+
+        <!-- Fine-Tune Height Slider (- / +) -->
+        <div class="bg-zinc-950/90 border border-white/25 p-2 flex flex-col gap-1.5">
+          <div class="flex items-center justify-between">
+            <span class="font-pixel text-[7px] text-cyan-300">HEIGHT FINE-TUNE (25% - 75%):</span>
+            <span id="popoverHeightValue" class="font-pixel text-[8px] text-yellow-300">56%</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="nudgeScreenHeight(-2)" class="px-2.5 py-1 bg-zinc-800 border border-white/50 font-pixel text-[9px] text-white active:scale-95">-</button>
+            <input 
+              id="popoverHeightSlider" 
+              type="range" 
+              min="25" 
+              max="75" 
+              step="0.5" 
+              value="56.25" 
+              oninput="updateScreenHeightFromSlider(this.value)"
+              class="nes-slider"
+            />
+            <button onclick="nudgeScreenHeight(2)" class="px-2.5 py-1 bg-zinc-800 border border-white/50 font-pixel text-[9px] text-white active:scale-95">+</button>
+          </div>
+        </div>
+
+        <!-- Side Bezel Toggle -->
+        <div class="flex items-center justify-between gap-2">
+          <span class="font-pixel text-[7px] text-white/80">SIDE BEZEL WIDTH:</span>
+          <div class="flex items-center gap-1.5">
+            <button 
+              id="btnBezelThin"
+              onclick="setSideBezel('thin')" 
+              class="px-2 py-1 font-pixel text-[7px] border border-cyan-400 bg-cyan-950 text-cyan-200"
+            >
+              THIN BEZEL (96%)
+            </button>
+            <button 
+              id="btnBezelFull"
+              onclick="setSideBezel('full')" 
+              class="px-2 py-1 font-pixel text-[7px] border border-white/30 bg-zinc-900 text-white/70"
+            >
+              FULL WIDTH (100%)
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- =====================================================
+           6. FULL STREAMER CONTROL DRAWER (PAMMU NES DECK)
+           ===================================================== -->
+      <aside 
+        id="controlDrawer" 
+        class="hidden absolute inset-0 z-50 bg-black/95 backdrop-blur-md p-3.5 flex flex-col justify-between overflow-y-auto"
+      >
+        <div class="space-y-2.5">
+          <!-- Header -->
+          <div class="flex items-center justify-between border-b-2 border-yellow-400 pb-2">
+            <div>
+              <h2 class="font-pixel text-xs text-yellow-300">PAMMU NES • STREAM DECK</h2>
+              <p class="font-vt text-sm text-cyan-300">Landscape Cutout & Live Retention Controls</p>
+            </div>
+            <button 
+              onclick="toggleControlDrawer()" 
+              class="pixel-box-red px-2.5 py-1 font-pixel text-[9px] text-white"
+            >
+              ✕ CLOSE
+            </button>
+          </div>
+
+          <!-- 1. Broadcast Mode Switch -->
+          <div class="pixel-box p-2 space-y-1.5">
+            <label class="font-pixel text-[7px] text-cyan-300 block">1. OVERLAY MODE & YT SAFE-ZONE CHECK</label>
+            <div class="grid grid-cols-2 gap-2">
+              <button 
+                id="btnLiveMode"
+                onclick="setPreviewMode(false)" 
+                class="py-1.5 px-2 font-pixel text-[7px] border-2 border-green-400 bg-green-950/70 text-green-300"
+              >
+                ● STREAM READY (LIVE)
+              </button>
+              <button 
+                id="btnPreviewMode"
+                onclick="setPreviewMode(true)" 
+                class="py-1.5 px-2 font-pixel text-[7px] border-2 border-white/30 bg-zinc-900 text-white/70"
+              >
+                👁 SETUP GUIDE MODE
+              </button>
+            </div>
+          </div>
+
+          <!-- 2. Landscape Screen Cutout Size & Aspect Ratio -->
+          <div class="pixel-box-gold p-2 space-y-2">
+            <div class="flex items-center justify-between">
+              <label class="font-pixel text-[7px] text-yellow-300 block">2. 📐 LANDSCAPE GAME SCREEN CUTOUT SIZE</label>
+              <span id="drawerHeightValue" class="font-pixel text-[7px] text-cyan-300">16:9 (56%)</span>
+            </div>
+
+            <div class="grid grid-cols-2 gap-1.5">
+              <button onclick="setScreenRatioPreset('16:9 LANDSCAPE', 56.25)" class="py-1 px-2 bg-zinc-900 hover:bg-zinc-800 border border-yellow-400/60 font-pixel text-[7px] text-yellow-300 text-left">
+                ► 16:9 LANDSCAPE
+              </button>
+              <button onclick="setScreenRatioPreset('20:9 FULL PHONE', 45)" class="py-1 px-2 bg-zinc-900 hover:bg-zinc-800 border border-cyan-400/60 font-pixel text-[7px] text-cyan-300 text-left">
+                ► 20:9 FULL PHONE
+              </button>
+              <button onclick="setScreenRatioPreset('18:9 COMPACT', 50)" class="py-1 px-2 bg-zinc-900 hover:bg-zinc-800 border border-green-400/60 font-pixel text-[7px] text-green-300 text-left">
+                ► 18:9 COMPACT
+              </button>
+              <button onclick="setScreenRatioPreset('4:3 CLASSIC NES', 75)" class="py-1 px-2 bg-zinc-900 hover:bg-zinc-800 border border-white/40 font-pixel text-[7px] text-white/80 text-left">
+                ► 4:3 CLASSIC NES
+              </button>
+            </div>
+
+            <!-- Slider inside Drawer -->
+            <div class="flex items-center gap-2 pt-0.5">
+              <button onclick="nudgeScreenHeight(-2)" class="px-2 py-0.5 bg-zinc-800 border border-white/50 font-pixel text-[8px] text-white">-</button>
+              <input 
+                id="drawerHeightSlider" 
+                type="range" 
+                min="25" 
+                max="75" 
+                step="0.5" 
+                value="56.25" 
+                oninput="updateScreenHeightFromSlider(this.value)"
+                class="nes-slider"
+              />
+              <button onclick="nudgeScreenHeight(2)" class="px-2 py-0.5 bg-zinc-800 border border-white/50 font-pixel text-[8px] text-white">+</button>
+            </div>
+          </div>
+
+          <!-- 3. Quick 90s NES Game Presets -->
+          <div class="pixel-box p-2 space-y-1.5">
+            <label class="font-pixel text-[7px] text-yellow-300 block">3. ONE-TAP 90s NES GAME PRESETS</label>
+            <div class="grid grid-cols-2 gap-1 font-vt text-sm">
+              <button onclick="applyPreset('CONTRA (1988)', '1 LIFE NO-DEATH RUN!', 'STAGE 01: JUNGLE')" class="bg-zinc-800 hover:bg-zinc-700 border border-white/30 py-1 px-2 text-left text-white truncate">
+                ► Contra (No-Death)
+              </button>
+              <button onclick="applyPreset('SUPER MARIO BROS 3', 'SPEEDRUN NO WARP!', 'WORLD 1-1')" class="bg-zinc-800 hover:bg-zinc-700 border border-white/30 py-1 px-2 text-left text-white truncate">
+                ► Super Mario Bros 3
+              </button>
+              <button onclick="applyPreset('ADVENTURE ISLAND', 'NO FRUIT MISS RUN!', 'AREA 1-1')" class="bg-zinc-800 hover:bg-zinc-700 border border-white/30 py-1 px-2 text-left text-white truncate">
+                ► Adventure Island
+              </button>
+              <button onclick="applyPreset('SNOW BROS (NES)', 'BOSS RUSH CHALLENGE', 'FLOOR 01')" class="bg-zinc-800 hover:bg-zinc-700 border border-white/30 py-1 px-2 text-left text-white truncate">
+                ► Snow Bros
+              </button>
+              <button onclick="applyPreset('DOUBLE DRAGON II', 'HARD MODE SOLO RUN', 'MISSION 1')" class="bg-zinc-800 hover:bg-zinc-700 border border-white/30 py-1 px-2 text-left text-white truncate">
+                ► Double Dragon II
+              </button>
+              <button onclick="applyPreset('CIRCUS CHARLIE', '100% RINGS CLEAR!', 'STAGE 01')" class="bg-zinc-800 hover:bg-zinc-700 border border-white/30 py-1 px-2 text-left text-white truncate">
+                ► Circus Charlie
+              </button>
+            </div>
+          </div>
+
+          <!-- 4. Custom Text Fields -->
+          <div class="pixel-box p-2 space-y-1.5">
+            <label class="font-pixel text-[7px] text-cyan-300 block">4. EDIT TITLES & HOOKS</label>
+            
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <span class="font-vt text-xs text-white/70 block">Channel Name:</span>
+                <input id="inputBrand" type="text" value="PAMMU NES" oninput="syncFromInputs()" class="w-full bg-black border border-white/50 px-2 py-1 font-pixel text-[8px] text-yellow-300" />
+              </div>
+              <div>
+                <span class="font-vt text-xs text-white/70 block">Stage Badge:</span>
+                <input id="inputStage" type="text" value="STAGE 01" oninput="syncFromInputs()" class="w-full bg-black border border-white/50 px-2 py-1 font-pixel text-[8px] text-cyan-300" />
+              </div>
+            </div>
+
+            <div>
+              <span class="font-vt text-xs text-white/70 block">Now Playing Game Name:</span>
+              <input id="inputGame" type="text" value="CONTRA (1988)" oninput="syncFromInputs()" class="w-full bg-black border border-white/50 px-2 py-1 font-pixel text-[8px] text-white" />
+            </div>
+
+            <div>
+              <span class="font-vt text-xs text-white/70 block">Viewer Retention Challenge Hook:</span>
+              <input id="inputChallenge" type="text" value="1 LIFE NO-DEATH CHALLENGE!" oninput="syncFromInputs()" class="w-full bg-black border border-red-400 px-2 py-1 font-vt text-base text-white uppercase" />
+            </div>
+          </div>
+
+          <!-- 5. Interactive Counters & Color Themes -->
+          <div class="pixel-box p-2 space-y-2">
+            <label class="font-pixel text-[7px] text-yellow-300 block">5. LIVE COUNTERS, GOAL & THEME</label>
+            
+            <div class="grid grid-cols-2 gap-2">
+              <div class="bg-black/70 p-1.5 border border-white/20 flex items-center justify-between">
+                <span class="font-pixel text-[7px] text-red-400">HEARTS:</span>
+                <div class="flex items-center gap-1">
+                  <button onclick="changeHearts(-1)" class="px-2 py-0.5 bg-red-900 text-white font-pixel text-[8px]">-</button>
+                  <span id="drawerHeartsVal" class="font-pixel text-[8px] text-white px-1">3</span>
+                  <button onclick="changeHearts(1)" class="px-2 py-0.5 bg-green-800 text-white font-pixel text-[8px]">+</button>
+                </div>
+              </div>
+
+              <div class="bg-black/70 p-1.5 border border-white/20 flex items-center justify-between">
+                <span class="font-pixel text-[7px] text-yellow-300">FAILS:</span>
+                <div class="flex items-center gap-1">
+                  <button onclick="changeDeaths(-1)" class="px-2 py-0.5 bg-zinc-700 text-white font-pixel text-[8px]">-</button>
+                  <span id="drawerDeathsVal" class="font-pixel text-[8px] text-white px-1">0</span>
+                  <button onclick="changeDeaths(1)" class="px-2 py-0.5 bg-red-700 text-white font-pixel text-[8px]">+</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-3 gap-2">
+              <div>
+                <span class="font-vt text-xs text-white/70 block">Goal Title:</span>
+                <input id="inputGoalLabel" type="text" value="TODAY'S SUB GOAL" oninput="syncFromInputs()" class="w-full bg-black border border-white/40 px-1.5 py-1 font-pixel text-[7px] text-yellow-300" />
+              </div>
+              <div>
+                <span class="font-vt text-xs text-white/70 block">Current:</span>
+                <input id="inputGoalCurrent" type="number" value="42" oninput="syncFromInputs()" class="w-full bg-black border border-white/40 px-1.5 py-1 font-pixel text-[8px] text-white" />
+              </div>
+              <div>
+                <span class="font-vt text-xs text-white/70 block">Target:</span>
+                <input id="inputGoalTarget" type="number" value="50" oninput="syncFromInputs()" class="w-full bg-black border border-white/40 px-1.5 py-1 font-pixel text-[8px] text-cyan-300" />
+              </div>
+            </div>
+
+            <div class="grid grid-cols-4 gap-1.5 pt-1">
+              <button onclick="setTheme('nes-classic')" class="py-1 bg-[#ff2a2a] text-white font-pixel text-[7px] border border-white">NES RED</button>
+              <button onclick="setTheme('cyber')" class="py-1 bg-[#ff007f] text-white font-pixel text-[7px] border border-white">ARCADE</button>
+              <button onclick="setTheme('famicom')" class="py-1 bg-[#b81d24] text-yellow-300 font-pixel text-[7px] border border-white">FAMICOM</button>
+              <button onclick="setTheme('arcade-green')" class="py-1 bg-[#00ff66] text-black font-pixel text-[7px] border border-white">MATRIX</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Footer Actions: Copy PRISM URL & Test Alert -->
+        <div class="pt-2.5 border-t border-white/20 flex flex-col gap-2">
+          <div class="grid grid-cols-2 gap-2">
+            <button 
+              onclick="triggerArcadeToast('NEW SUBSCRIBER UNLOCKED! ★')" 
+              class="pixel-box-gold py-2 font-pixel text-[7px] text-yellow-300 active:scale-95"
+            >
+              ★ TEST SUB POP-UP
+            </button>
+            <button 
+              onclick="copyPrismUrl()" 
+              id="copyUrlBtn"
+              class="pixel-box py-2 font-pixel text-[7px] text-cyan-300 bg-cyan-950 active:scale-95"
+            >
+              📋 COPY PRISM URL
+            </button>
+          </div>
+        </div>
+      </aside>
+
+    </main>
+  </div>
+
+  <!-- Hidden textarea for reliable clipboard copy inside iframes/mobile -->
+  <textarea id="clipboardHelper" class="fixed -top-96 opacity-0 pointer-events-none"></textarea>
+
+  <script>
+    // =========================================================================
+    // STATE MANAGEMENT FOR PAMMU NES OVERLAY (DEFAULT = 16:9 LANDSCAPE CUTOUT)
+    // =========================================================================
+    const defaultState = {
+      brand: "PAMMU NES",
+      game: "CONTRA (1988)",
+      challenge: "1 LIFE NO-DEATH CHALLENGE!",
+      stage: "STAGE 01",
+      hearts: 3,
+      maxHearts: 3,
+      deaths: 0,
+      goalLabel: "TODAY'S SUB GOAL",
+      goalCurrent: 42,
+      goalTarget: 50,
+      bottomMode: "native",
+      theme: "nes-classic",
+      previewMode: false,
+      // Landscape Screen Cutout Settings
+      cutoutPresetName: "16:9 LANDSCAPE",
+      cutoutHeightRatio: 56.25, // 16:9 Landscape default (9 / 16 * 100 = 56.25%)
+      sideBezel: "thin" // 'thin' (96% width) or 'full' (100% edge-to-edge width)
+    };
+
+    let state = { ...defaultState };
+
+    // High-Retention Rotating Prompts (Cycles every 5 seconds)
+    const retentionPrompts = [
+      "DROP YOUR NEXT GAME REQUEST IN CHAT!",
+      "INSERT COIN • NEW SUBS GET RETRO SHOUTOUT!",
+      "NO SAVE STATES • RAW 90s SKILL CHALLENGE!",
+      "CAN WE BEAT THIS WITHOUT LOSING A LIFE?",
+      "90s KIDS ATTENDANCE LAGAO CHAT MEIN!"
+    ];
+    let currentPromptIndex = 0;
+
+    // =========================================================================
+    // INITIALIZATION (LOAD FROM LOCALSTORAGE + URL QUERY PARAMS FOR PRISM LIVE)
+    // =========================================================================
+    function initOverlay() {
+      try {
+        const saved = localStorage.getItem("pammu_nes_overlay_v3_landscape");
+        if (saved) {
+          state = { ...defaultState, ...JSON.parse(saved) };
+        }
+      } catch (e) {
+        console.warn("Storage restricted, using defaults.");
+      }
+
+      // Override with URL parameters if provided in PRISM Live Studio source URL
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("brand")) state.brand = params.get("brand");
+      if (params.get("game")) state.game = params.get("game");
+      if (params.get("challenge")) state.challenge = params.get("challenge");
+      if (params.get("stage")) state.stage = params.get("stage");
+      if (params.get("hearts")) state.hearts = parseInt(params.get("hearts"), 10) || 3;
+      if (params.get("deaths")) state.deaths = parseInt(params.get("deaths"), 10) || 0;
+      if (params.get("goalCurrent")) state.goalCurrent = parseInt(params.get("goalCurrent"), 10) || 42;
+      if (params.get("goalTarget")) state.goalTarget = parseInt(params.get("goalTarget"), 10) || 50;
+      if (params.get("bottom")) state.bottomMode = params.get("bottom");
+      if (params.get("theme")) state.theme = params.get("theme");
+      if (params.get("preview") === "1") state.previewMode = true;
+      if (params.get("ratio")) state.cutoutHeightRatio = parseFloat(params.get("ratio")) || 56.25;
+      if (params.get("presetName")) state.cutoutPresetName = params.get("presetName");
+      if (params.get("bezel")) state.sideBezel = params.get("bezel");
+
+      // Populate Drawer Inputs
+      document.getElementById("inputBrand").value = state.brand;
+      document.getElementById("inputGame").value = state.game;
+      document.getElementById("inputChallenge").value = state.challenge;
+      document.getElementById("inputStage").value = state.stage;
+      document.getElementById("inputGoalLabel").value = state.goalLabel;
+      document.getElementById("inputGoalCurrent").value = state.goalCurrent;
+      document.getElementById("inputGoalTarget").value = state.goalTarget;
+
+      renderAll();
+      startPromptTicker();
+      scheduleFloatingBarFade();
+
+      window.addEventListener("resize", () => {
+        requestAnimationFrame(updateCutoutClipPath);
+      });
+    }
+
+    // =========================================================================
+    // DYNAMIC CLIP-PATH TRANSPARENT CUTOUT ENGINE
+    // Punches an exact 100% transparent rectangular window out of #backdropCutoutLayer
+    // =========================================================================
+    function updateCutoutClipPath() {
+      const canvas = document.getElementById("overlayCanvas");
+      const viewport = document.getElementById("gameViewport");
+      const backdrop = document.getElementById("backdropCutoutLayer");
+      if (!canvas || !viewport || !backdrop) return;
+
+      const cRect = canvas.getBoundingClientRect();
+      const vRect = viewport.getBoundingClientRect();
+      if (cRect.width === 0 || cRect.height === 0) return;
+
+      // Calculate exact inner hole coordinates relative to the 9:16 overlay canvas
+      const borderOffset = 3;
+      const left = Math.max(0, vRect.left - cRect.left + borderOffset);
+      const top = Math.max(0, vRect.top - cRect.top + borderOffset);
+      const right = Math.min(cRect.width, vRect.right - cRect.left - borderOffset);
+      const bottom = Math.min(cRect.height, vRect.bottom - cRect.top - borderOffset);
+
+      // Even-odd outer-to-inner polygon that leaves the center game cutout 100% transparent
+      const polygon = `polygon(
+        0px 0px,
+        100% 0px,
+        100% 100%,
+        0px 100%,
+        0px 0px,
+        ${left}px ${top}px,
+        ${left}px ${bottom}px,
+        ${right}px ${bottom}px,
+        ${right}px ${top}px,
+        ${left}px ${top}px
+      )`;
+      backdrop.style.clipPath = polygon;
+      backdrop.style.webkitClipPath = polygon;
+
+      // Update live pixel dimensions badge
+      const pxWidth = Math.round(vRect.width);
+      const pxHeight = Math.round(vRect.height);
+      const dimText = document.getElementById("cutoutDimensionsText");
+      if (dimText) {
+        dimText.textContent = `${state.cutoutPresetName} • ${pxWidth}×${pxHeight}px`;
+      }
+    }
+
+    // =========================================================================
+    // RENDER UI, LANDSCAPE SIZING & 8-BIT PIXEL SVGS
+    // =========================================================================
+    function renderAll() {
+      // Theme
+      document.body.setAttribute("data-theme", state.theme);
+
+      // Apply Landscape Cutout CSS Variables
+      const clampedRatio = Math.min(75, Math.max(25, Number(state.cutoutHeightRatio) || 56.25));
+      state.cutoutHeightRatio = clampedRatio;
+      document.documentElement.style.setProperty("--cutout-height-ratio", `${clampedRatio}%`);
+      document.documentElement.style.setProperty("--cutout-width", state.sideBezel === "full" ? "100%" : "96%");
+
+      const viewportEl = document.getElementById("gameViewport");
+      if (state.sideBezel === "full") {
+        viewportEl.classList.add("full-bleed");
+      } else {
+        viewportEl.classList.remove("full-bleed");
+      }
+
+      // Sync Sliders & Badges for Cutout Size
+      document.getElementById("cutoutPresetBadge").textContent = `${state.cutoutPresetName} FEED`;
+      document.getElementById("popoverHeightValue").textContent = `${clampedRatio.toFixed(1)}%`;
+      document.getElementById("drawerHeightValue").textContent = `${state.cutoutPresetName} (${Math.round(clampedRatio)}%)`;
+      document.getElementById("popoverHeightSlider").value = clampedRatio;
+      document.getElementById("drawerHeightSlider").value = clampedRatio;
+
+      // Side Bezel Buttons State
+      const btnThin = document.getElementById("btnBezelThin");
+      const btnFull = document.getElementById("btnBezelFull");
+      if (state.sideBezel === "full") {
+        btnFull.className = "px-2 py-1 font-pixel text-[7px] border border-cyan-400 bg-cyan-950 text-cyan-200";
+        btnThin.className = "px-2 py-1 font-pixel text-[7px] border border-white/30 bg-zinc-900 text-white/70";
+      } else {
+        btnThin.className = "px-2 py-1 font-pixel text-[7px] border border-cyan-400 bg-cyan-950 text-cyan-200";
+        btnFull.className = "px-2 py-1 font-pixel text-[7px] border border-white/30 bg-zinc-900 text-white/70";
+      }
+
+      // Texts
+      document.getElementById("displayBrand").textContent = state.brand;
+      document.getElementById("displayGame").textContent = state.game;
+      document.getElementById("displayChallenge").textContent = state.challenge;
+      document.getElementById("bezelStageText").textContent = state.stage;
+      document.getElementById("displayDeaths").textContent = String(state.deaths).padStart(2, "0");
+
+      // Drawer Counter Labels
+      document.getElementById("drawerHeartsVal").textContent = state.hearts;
+      document.getElementById("drawerDeathsVal").textContent = state.deaths;
+
+      // Render 8-Bit Pixel Hearts (No OS Emojis!)
+      const heartsContainer = document.getElementById("heartsContainer");
+      heartsContainer.innerHTML = "";
+      for (let i = 0; i < state.maxHearts; i++) {
+        const isFull = i < state.hearts;
+        const heartSvg = `
+          <svg width="13" height="12" viewBox="0 0 9 8" shape-rendering="crispEdges">
+            <rect x="1" y="0" width="2" height="1" fill="${isFull ? '#FF2A2A' : '#3F3F46'}"/>
+            <rect x="6" y="0" width="2" height="1" fill="${isFull ? '#FF2A2A' : '#3F3F46'}"/>
+            <rect x="0" y="1" width="4" height="2" fill="${isFull ? '#FF2A2A' : '#3F3F46'}"/>
+            <rect x="5" y="1" width="4" height="2" fill="${isFull ? '#FF2A2A' : '#3F3F46'}"/>
+            <rect x="0" y="3" width="9" height="2" fill="${isFull ? '#FF2A2A' : '#3F3F46'}"/>
+            <rect x="1" y="5" width="7" height="1" fill="${isFull ? '#FF2A2A' : '#3F3F46'}"/>
+            <rect x="2" y="6" width="5" height="1" fill="${isFull ? '#FF2A2A' : '#3F3F46'}"/>
+            <rect x="3" y="7" width="3" height="1" fill="${isFull ? '#FF2A2A' : '#3F3F46'}"/>
+            ${isFull ? '<rect x="1" y="1" width="1" height="1" fill="#FFFFFF"/>' : ''}
+          </svg>
+        `;
+        heartsContainer.insertAdjacentHTML("beforeend", heartSvg);
+      }
+
+      // Goal Bar
+      document.getElementById("displayGoalLabel").textContent = state.goalLabel;
+      document.getElementById("displayGoalCount").textContent = `${state.goalCurrent} / ${state.goalTarget}`;
+      const pct = Math.min(100, Math.max(0, Math.round((state.goalCurrent / Math.max(1, state.goalTarget)) * 100)));
+      document.getElementById("goalProgressBar").style.width = `${pct}%`;
+
+      // Bottom Zone Mode
+      const nativeEl = document.getElementById("bottomModeNative");
+      const customEl = document.getElementById("bottomModeCustom");
+      if (state.bottomMode === "custom") {
+        nativeEl.classList.add("hidden");
+        customEl.classList.remove("hidden");
+      } else {
+        customEl.classList.add("hidden");
+        nativeEl.classList.remove("hidden");
+      }
+
+      // Setup Guide Mode vs Stream Ready (Live Transparent) Mode
+      const previewMock = document.getElementById("previewGameMock");
+      const safeGuide = document.getElementById("ytSafeZoneGuide");
+      const dimBadge = document.getElementById("cutoutDimensionsBadge");
+      const modeBtn = document.getElementById("modeToggleBtn");
+      const btnLive = document.getElementById("btnLiveMode");
+      const btnPreview = document.getElementById("btnPreviewMode");
+
+      if (state.previewMode) {
+        previewMock.classList.remove("hidden");
+        previewMock.classList.add("flex");
+        safeGuide.classList.remove("hidden");
+        dimBadge.classList.remove("hidden");
+        modeBtn.textContent = "MODE: SETUP GUIDE";
+        modeBtn.classList.replace("text-yellow-300", "text-green-400");
+        btnPreview.className = "py-1.5 px-2 font-pixel text-[7px] border-2 border-yellow-400 bg-yellow-950/70 text-yellow-300";
+        btnLive.className = "py-1.5 px-2 font-pixel text-[7px] border-2 border-white/30 bg-zinc-900 text-white/70";
+      } else {
+        previewMock.classList.add("hidden");
+        previewMock.classList.remove("flex");
+        safeGuide.classList.add("hidden");
+        dimBadge.classList.add("hidden");
+        modeBtn.textContent = "MODE: STREAM READY";
+        modeBtn.classList.replace("text-green-400", "text-yellow-300");
+        btnLive.className = "py-1.5 px-2 font-pixel text-[7px] border-2 border-green-400 bg-green-950/70 text-green-300";
+        btnPreview.className = "py-1.5 px-2 font-pixel text-[7px] border-2 border-white/30 bg-zinc-900 text-white/70";
+      }
+
+      // Recalculate 100% transparent clip-path hole after DOM update
+      requestAnimationFrame(updateCutoutClipPath);
+      setTimeout(updateCutoutClipPath, 160);
+
+      saveState();
+    }
+
+    function saveState() {
+      try {
+        localStorage.setItem("pammu_nes_overlay_v3_landscape", JSON.stringify(state));
+      } catch (e) {}
+    }
+
+    // =========================================================================
+    // LANDSCAPE SCREEN CUTOUT ADJUSTER CONTROLS
+    // =========================================================================
+    function toggleScreenSizePopover() {
+      const pop = document.getElementById("screenSizePopover");
+      const isHidden = pop.classList.contains("hidden");
+      if (isHidden) {
+        pop.classList.remove("hidden");
+        // Show dimensions badge temporarily while adjusting
+        document.getElementById("cutoutDimensionsBadge").classList.remove("hidden");
+        updateCutoutClipPath();
+      } else {
+        pop.classList.add("hidden");
+        if (!state.previewMode) {
+          document.getElementById("cutoutDimensionsBadge").classList.add("hidden");
+        }
+      }
+    }
+
+    function setScreenRatioPreset(presetName, heightRatio) {
+      state.cutoutPresetName = presetName;
+      state.cutoutHeightRatio = heightRatio;
+      document.getElementById("cutoutDimensionsBadge").classList.remove("hidden");
+      renderAll();
+      triggerArcadeToast(`SCREEN SET: ${presetName}`);
+    }
+
+    function updateScreenHeightFromSlider(val) {
+      const numericVal = parseFloat(val) || 56.25;
+      state.cutoutHeightRatio = numericVal;
+      if (Math.abs(numericVal - 56.25) < 0.6) state.cutoutPresetName = "16:9 LANDSCAPE";
+      else if (Math.abs(numericVal - 45) < 0.6) state.cutoutPresetName = "20:9 FULL PHONE";
+      else if (Math.abs(numericVal - 50) < 0.6) state.cutoutPresetName = "18:9 COMPACT";
+      else if (Math.abs(numericVal - 75) < 0.6) state.cutoutPresetName = "4:3 CLASSIC NES";
+      else state.cutoutPresetName = `CUSTOM ${Math.round(numericVal)}%`;
+
+      document.getElementById("cutoutDimensionsBadge").classList.remove("hidden");
+      renderAll();
+    }
+
+    function nudgeScreenHeight(delta) {
+      const nextVal = Math.min(75, Math.max(25, (Number(state.cutoutHeightRatio) || 56.25) + delta));
+      updateScreenHeightFromSlider(nextVal);
+    }
+
+    function setSideBezel(mode) {
+      state.sideBezel = mode === "full" ? "full" : "thin";
+      document.getElementById("cutoutDimensionsBadge").classList.remove("hidden");
+      renderAll();
+    }
+
+    // =========================================================================
+    // INTERACTIVE CONTROLS & LIVE MICRO-EVENTS
+    // =========================================================================
+    function syncFromInputs() {
+      state.brand = document.getElementById("inputBrand").value || "PAMMU NES";
+      state.game = document.getElementById("inputGame").value || "CONTRA (NES)";
+      state.challenge = document.getElementById("inputChallenge").value || "1 LIFE NO-DEATH RUN!";
+      state.stage = document.getElementById("inputStage").value || "STAGE 01";
+      state.goalLabel = document.getElementById("inputGoalLabel").value || "TODAY'S SUB GOAL";
+      state.goalCurrent = parseInt(document.getElementById("inputGoalCurrent").value, 10) || 0;
+      state.goalTarget = parseInt(document.getElementById("inputGoalTarget").value, 10) || 50;
+      renderAll();
+    }
+
+    function applyPreset(game, challenge, stage) {
+      state.game = game;
+      state.challenge = challenge;
+      state.stage = stage;
+      state.hearts = 3;
+      document.getElementById("inputGame").value = game;
+      document.getElementById("inputChallenge").value = challenge;
+      document.getElementById("inputStage").value = stage;
+      renderAll();
+      triggerArcadeToast(`LOADED: ${game}`);
+    }
+
+    function triggerDeathIncrement() {
+      state.deaths += 1;
+      if (state.hearts > 0) {
+        state.hearts -= 1;
+      }
+      renderAll();
+      triggerArcadeToast(`💀 OUCH! FAIL #${state.deaths} RECORDED!`);
+    }
+
+    function incrementGoal() {
+      state.goalCurrent += 1;
+      document.getElementById("inputGoalCurrent").value = state.goalCurrent;
+      renderAll();
+      if (state.goalCurrent >= state.goalTarget) {
+        triggerArcadeToast(`★ GOAL COMPLETED: ${state.goalCurrent}/${state.goalTarget}! ★`);
+      } else {
+        triggerArcadeToast(`+1 SUB GOAL LEVEL UP! (${state.goalCurrent}/${state.goalTarget})`);
+      }
+    }
+
+    function changeHearts(delta) {
+      state.hearts = Math.min(state.maxHearts, Math.max(0, state.hearts + delta));
+      renderAll();
+    }
+
+    function changeDeaths(delta) {
+      state.deaths = Math.max(0, state.deaths + delta);
+      renderAll();
+    }
+
+    function setBottomMode(mode) {
+      state.bottomMode = mode;
+      renderAll();
+    }
+
+    function setTheme(themeName) {
+      state.theme = themeName;
+      renderAll();
+    }
+
+    function togglePreviewMode() {
+      state.previewMode = !state.previewMode;
+      renderAll();
+    }
+
+    function setPreviewMode(val) {
+      state.previewMode = val;
+      renderAll();
+    }
+
+    function toggleControlDrawer() {
+      const drawer = document.getElementById("controlDrawer");
+      drawer.classList.toggle("hidden");
+    }
+
+    // Pop-up 8-Bit Arcade Toast (Auto-disappears after 3.2 seconds)
+    let toastTimeout = null;
+    function triggerArcadeToast(message) {
+      const toast = document.getElementById("arcadeToast");
+      const text = document.getElementById("arcadeToastText");
+      text.textContent = message;
+      toast.classList.remove("hidden");
+      toast.classList.add("animate-flash");
+
+      if (toastTimeout) clearTimeout(toastTimeout);
+      toastTimeout = setTimeout(() => {
+        toast.classList.add("hidden");
+        toast.classList.remove("animate-flash");
+      }, 3200);
+    }
+
+    // Rotate Bottom Engagement Ticker Every 5 Seconds
+    function startPromptTicker() {
+      const promptEl = document.getElementById("rotatingPromptText");
+      setInterval(() => {
+        currentPromptIndex = (currentPromptIndex + 1) % retentionPrompts.length;
+        promptEl.textContent = retentionPrompts[currentPromptIndex];
+      }, 5000);
+    }
+
+    // Auto-fade floating quick buttons after 4.5 seconds of inactivity in Stream Ready Mode
+    let fadeTimer = null;
+    function scheduleFloatingBarFade() {
+      const bar = document.getElementById("quickFloatingBar");
+      const pop = document.getElementById("screenSizePopover");
+      const resetFade = () => {
+        bar.style.opacity = "1";
+        if (fadeTimer) clearTimeout(fadeTimer);
+        fadeTimer = setTimeout(() => {
+          if (!state.previewMode && pop.classList.contains("hidden")) {
+            bar.style.opacity = "0";
+          }
+        }, 4500);
+      };
+      window.addEventListener("pointerdown", resetFade);
+      window.addEventListener("mousemove", resetFade);
+      resetFade();
+    }
+
+    // Copy URL with Query Params (including Landscape Screen Size) for PRISM Live Studio
+    function copyPrismUrl() {
+      const baseUrl = window.location.origin + window.location.pathname;
+      const params = new URLSearchParams({
+        brand: state.brand,
+        game: state.game,
+        challenge: state.challenge,
+        stage: state.stage,
+        hearts: state.hearts,
+        deaths: state.deaths,
+        goalCurrent: state.goalCurrent,
+        goalTarget: state.goalTarget,
+        bottom: state.bottomMode,
+        theme: state.theme,
+        ratio: state.cutoutHeightRatio,
+        presetName: state.cutoutPresetName,
+        bezel: state.sideBezel
+      });
+      const finalUrl = `${baseUrl}?${params.toString()}`;
+
+      const helper = document.getElementById("clipboardHelper");
+      helper.value = finalUrl;
+      helper.select();
+      document.execCommand("copy");
+
+      const btn = document.getElementById("copyUrlBtn");
+      btn.textContent = "✔ URL COPIED FOR PRISM!";
+      setTimeout(() => {
+        btn.textContent = "📋 COPY PRISM URL";
+      }, 2500);
+    }
+
+    window.onload = initOverlay;
+  </script>
+</body>
+</html>
